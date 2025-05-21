@@ -8,7 +8,7 @@ A FastAPI-based microservice for managing orders with full CI/CD pipeline and mo
 order-service/
 ├── Infrastructure/
 │   ├── Dockerfile
-│   ├── Jenkinsfile.groovy
+│   ├── Jenkinsfile
 │   ├── helm/
 │   │   ├── Chart.yaml
 │   │   ├── values.prod.yaml
