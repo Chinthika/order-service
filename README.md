@@ -34,7 +34,7 @@ order-service/
 │   └── service/
 │       └── test_order_service.py
 ├── requirements.txt
-├── dev-1.0.0-requirements.txt
+├── dev-requirements.txt
 └── README.md
 ```
 
