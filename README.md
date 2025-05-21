@@ -105,7 +105,7 @@ Configure New Relic monitoring in `Infrastructure/helm/values.prod.yaml`
 
 ## CI/CD
 
-Jenkins pipeline defined in `Infrastructure/Jenkinsfile.groovy`
+Jenkins pipeline defined in `Infrastructure/Jenkinsfile`
 
 ## Contributing
 
