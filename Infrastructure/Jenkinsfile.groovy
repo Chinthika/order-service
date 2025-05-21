@@ -97,6 +97,11 @@ pipeline {
                     }
                 }
             }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/**/*.*', allowEmptyArchive: true
+                }
+            }
         }
 
         stage('Build Docker Image & Push to Docker Hub') {
@@ -217,11 +222,6 @@ pipeline {
                     }
                 }
             }
-        }
-    }
-    post {
-        always {
-            archiveArtifacts artifacts: 'reports/**/*.*', allowEmptyArchive: true
         }
     }
 }

@@ -1,129 +1,118 @@
 # Order Service API
 
-A FastAPI-based microservice for managing orders.
-
-## Description
-
-This service provides REST API endpoints to manage orders, including retrieving all orders and getting order details by ID. It uses FastAPI for the web framework and includes sample data for demonstration purposes.
-
-## Prerequisites
-
-- Python 3.9 or higher
-- pip (Python package manager)
-
-## Installation
-
-### Local Setup
-
-1. Clone the repository:
-   ```
-   git clone <repository-url>
-   cd order-service
-   ```
-
-2. Install dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
-
-3. For development, install development dependencies:
-   ```
-   pip install -r dev-requirements.txt
-   ```
-
-## Running the Application
-
-### Local Development
-
-To run the application locally:
-
-```bash
-# Set the Python path to include the current directory
-export PYTHONPATH=.
-
-# Run the application
-python main.py
-```
-
-The API will be available at http://localhost:8000
-
-### Using Docker
-
-1. Build the Docker image:
-   ```
-   docker build -t order-service -f Infrastructure/Dockerfile .
-   ```
-
-2. Run the container:
-   ```
-   docker run -p 8000:8000 order-service
-   ```
-
-The API will be available at http://localhost:8000
-
-## API Endpoints
-
-- `GET /`: Welcome message
-- `GET /orders`: Get all orders
-- `GET /orders/{order_id}`: Get a specific order by ID
-
-## Testing
-
-### Running Tests
-
-To run the tests:
-
-```bash
-# Set the Python path to include the current directory
-export PYTHONPATH=.
-
-# Run all tests
-python -m pytest
-
-# Run specific tests
-python -m pytest test/service/test_order_service.py
-```
-
-### API Testing
-
-You can use the provided HTTP request file `test_main.http` to test the API endpoints if you're using an IDE that supports HTTP request files (like PyCharm or VS Code with the REST Client extension).
+A FastAPI-based microservice for managing orders with full CI/CD pipeline and monitoring.
 
 ## Project Structure
 
 ```
 order-service/
 ├── Infrastructure/
-│   ├── Dockerfile         # Docker configuration
-│   └── Jenkinsfile.groovy # CI/CD pipeline configuration
+│   ├── Dockerfile
+│   ├── Jenkinsfile.groovy
+│   ├── helm/
+│   │   ├── Chart.yaml
+│   │   ├── values.prod.yaml
+│   │   └── templates/
+│   │       ├── deployment.yaml
+│   │       ├── ingress.yaml
+│   │       └── service.yaml
+│   └── terraform/
+│       ├── alert.tf
+│       ├── monitor.tf
+│       └── variables.tf
 ├── src/
-│   ├── app.py             # FastAPI application and routes
+│   ├── app.py
 │   ├── data/
-│   │   └── sample_data.py # Sample order data
+│   │   └── sample_data.py
 │   ├── model/
-│   │   └── order.py       # Order data model
+│   │   └── order.py
 │   ├── service/
-│   │   └── order_service.py # Business logic
-│   └── utils.py           # Utility functions
+│   │   └── order_service.py
+│   └── utils.py
 ├── test/
-│   ├── service/
-│   │   └── test_order_service.py # Service tests
-│   └── test_app.py        # API tests
-├── main.py                # Application entry point
-├── requirements.txt       # Production dependencies
-├── dev-requirements.txt   # Development dependencies
-└── test_main.http         # HTTP request examples
+│   ├── test_app.py
+│   └── service/
+│       └── test_order_service.py
+├── requirements.txt
+├── dev-1.0.0-requirements.txt
+└── README.md
 ```
+
+## Features
+
+- REST API for order management
+- Docker container support
+- Kubernetes deployment with Helm
+- Terraform infrastructure as code
+- New Relic monitoring
+- CI/CD pipeline with Jenkins
+
+## API Documentation
+
+### Endpoints
+
+- `GET /` - Health check
+- `GET /health` - Service health status
+- `GET /orders` - Get all orders
+- `GET /orders/{order_id}` - Get specific order
 
 ## Development
 
-For development, it's recommended to:
+### Local Setup
 
-1. Install development dependencies:
+1. Clone repository
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   pip install -r dev-1.0.0-requirements.txt
    ```
-   pip install -r dev-requirements.txt
+3. Run application:
+   ```bash
+   python main.py
    ```
 
-2. Run tests before submitting changes:
+## Deployment
+
+### Docker
+
+Build image:
+```bash
+docker build -t order-service -f Infrastructure/Dockerfile .
+```
+
+Run container:
+```bash
+docker run -p 8000:8000 order-service
+```
+
+## Infrastructure
+
+### Terraform Setup
+
+1. Initialize:
+   ```bash
+   cd Infrastructure/terraform
+   terraform init
    ```
-   python -m pytest
+2. Apply:
+   ```bash
+   terraform apply
    ```
+
+## Monitoring
+
+Configure New Relic monitoring in `Infrastructure/helm/values.prod.yaml`
+
+## CI/CD
+
+Jenkins pipeline defined in `Infrastructure/Jenkinsfile.groovy`
+
+## Contributing
+
+1. Fork repository
+2. Create feature branch
+3. Submit pull request
+
+## License
+
+MIT
