@@ -1,0 +1,227 @@
+pipeline {
+    agent any
+
+    environment {
+        STAGING_IMAGE = "order-service:${BUILD_NUMBER}"
+        PROD_REPO = "chinthika/order-service"
+        PROD_IMAGE = "chinthika/order-service:${BUILD_NUMBER}"
+        PATH = "/opt/homebrew/bin:${env.PATH}"
+        AWS_REGION = "us-east-1"
+        EKS_CLUSTER_NAME = "production-cluster"
+        NEWRELIC_ACCOUNT_ID = "6762121"
+    }
+
+    stages {
+        stage('Checkout & Setup') {
+            steps {
+                checkout scm
+                sh '''#!/usr/bin/env bash
+                      set -eux
+            
+                      # install dependencies
+                      python3 -m venv .venv
+                      source .venv/bin/activate
+                      pip install -r dev-requirements.txt
+            
+                      # disable docker credential helper
+                      mkdir -p ~/.docker
+                      echo '{}' > ~/.docker/config.json
+            
+                      # create reports directory
+                      mkdir -p reports
+                   '''
+            }
+        }
+
+        stage('Testing') {
+            parallel {
+                stage('Unit Tests - Pytest') {
+                    steps {
+                        sh '''#!/usr/bin/env bash
+                                set -eux
+                                source .venv/bin/activate
+                    
+                                # run tests
+                                python3 -m pytest --junitxml=reports/junit.xml
+                            '''
+                    }
+                    post {
+                        always {
+                            junit 'reports/junit.xml'
+                        }
+                    }
+                }
+
+                stage('Lint - Pylint') {
+                    steps {
+                        sh '''#!/usr/bin/env bash
+                              set -eux
+                              source .venv/bin/activate
+                              python3 -m pylint src/**/*.py > reports/pylint.txt
+                            '''
+                    }
+                    post {
+                        always {
+                            publishHTML(target: [
+                                    reportName           : 'Pylint Report',
+                                    reportDir            : 'reports',
+                                    reportFiles          : 'pylint.txt',
+                                    alwaysLinkToLastBuild: true
+                            ])
+                        }
+                        failure {
+                            unstable('Lint errors detected')
+                        }
+                    }
+                }
+
+                stage('Security Scan - Bandit') {
+                    steps {
+                        sh '''#!/usr/bin/env bash
+                              set -eux
+                              source .venv/bin/activate
+                              # run bandit and let it exit non-zero if any issues are found
+                              bandit -r src -f html -o reports/bandit.html
+                            '''
+                    }
+                    post {
+                        always {
+                            publishHTML(target: [
+                                    reportName           : 'Bandit Report',
+                                    reportDir            : 'reports',
+                                    reportFiles          : 'bandit.html',
+                                    alwaysLinkToLastBuild: true,
+                                    allowMissing         : true
+                            ])
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Build Docker Image & Push to Docker Hub') {
+            steps {
+                withCredentials([
+                        usernamePassword(
+                                credentialsId: 'docker-hub-creds',
+                                usernameVariable: 'DOCKERHUB_USER',
+                                passwordVariable: 'DOCKERHUB_PASS'
+                        )
+                ]) {
+                    sh '''#!/usr/bin/env bash
+                          set -eux
+                          # build image
+                          docker buildx use multiarch-builder
+                          docker buildx build --platform linux/amd64 --load -t ${STAGING_IMAGE} -f Infrastructure/Dockerfile .
+                
+                          # tag for prod
+                          docker tag ${STAGING_IMAGE} ${PROD_IMAGE}
+                
+                          # Docker Hub login & push
+                          echo $DOCKERHUB_PASS | docker login -u $DOCKERHUB_USER --password-stdin
+                          docker push ${PROD_IMAGE}
+                        '''
+                }
+            }
+        }
+
+        stage('Deploy to Staging') {
+            steps {
+                sh '''#!/usr/bin/env bash
+                        set -eux
+                
+                        # stop & remove any old container
+                        docker stop order-service  || true
+                        docker rm   order-service  || true
+                
+                        # start fresh
+                        docker stop order-service || true
+                        docker run --name order-service -d -p 8000:8000 ${STAGING_IMAGE}
+                     '''
+            }
+        }
+
+        stage('Approve Prod Deploy') {
+            steps {
+                script {
+                    timeout(time: 30, unit: 'MINUTES') {
+                        input message: "Deploy to PROD?", ok: "Proceed"
+                    }
+                }
+            }
+        }
+
+        stage('Release - Deploy to Prod (EKS)') {
+            steps {
+                withCredentials([
+                        string(credentialsId: 'nr-license', variable: 'NEWRELIC_LICENSE_KEY'),
+                        usernamePassword(
+                                credentialsId: 'docker-hub-creds',
+                                usernameVariable: 'DOCKERHUB_USER',
+                                passwordVariable: 'DOCKERHUB_PASS'
+                        ),
+                        aws(
+                                credentialsId: 'aws-creds',
+                                accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        )
+                ]) {
+                    sh '''#!/usr/bin/env bash
+                          set -eux
+                
+                          # ensure prod namespace exists
+                          kubectl get namespace prod >/dev/null 2>&1 || kubectl create namespace prod
+                
+                          # create or update Docker Hub pull-secret
+                          kubectl create secret docker-registry dockerhub-creds \
+                            --namespace prod \
+                            --docker-server=https://index.docker.io/v1/ \
+                            --docker-username="$DOCKERHUB_USER" \
+                            --docker-password="$DOCKERHUB_PASS" \
+                            --dry-run=client -o yaml \
+                          | kubectl apply -f -
+                
+                          # configure kubectl for EKS
+                          aws eks update-kubeconfig --region ${AWS_REGION} --name ${EKS_CLUSTER_NAME}
+                
+                          # deploy (or upgrade) into prod namespace
+                          helm upgrade --install order-service-prod \
+                            Infrastructure/helm \
+                            --namespace prod \
+                            --create-namespace --atomic --debug\
+                            -f Infrastructure/helm/values.prod.yaml \
+                            --set image.repository=${PROD_REPO} \
+                            --set image.tag=${BUILD_NUMBER} \
+                            --set newrelic.licenseKey=${NEWRELIC_LICENSE_KEY}
+                          '''
+                }
+            }
+        }
+
+        stage('Provision HTTP Monitor') {
+            steps {
+                dir('Infrastructure/terraform') {
+                    withCredentials([string(
+                            credentialsId: 'newrelic-api-key',
+                            variable: 'NEWRELIC_API_KEY'
+                    )]) {
+                        sh '''#!/usr/bin/env bash
+                            set -eux
+            
+                            # initialize & apply terraform
+                            terraform init -input=false
+                            terraform apply -auto-approve \
+                            -var newrelic_api_key=${NEWRELIC_API_KEY} \
+                            -var newrelic_account_id=${NEWRELIC_ACCOUNT_ID}
+                        '''
+                    }
+                }
+            }
+        }
+    }
+    post {
+        always {
+            archiveArtifacts artifacts: 'reports/**/*.*', allowEmptyArchive: true
+        }
+    }
+}

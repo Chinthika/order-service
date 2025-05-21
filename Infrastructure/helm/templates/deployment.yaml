@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "order-service.fullname" . }}
+  labels:
+    app: {{ include "order-service.name" . }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "order-service.name" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "order-service.name" . }}
+    spec:
+{{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml .Values.imagePullSecrets | indent 8 }}
+{{- end }}
+      containers:
+        - name: order-service
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          livenessProbe:
+{{ toYaml .Values.livenessProbe | indent 12 }}
+          readinessProbe:
+{{ toYaml .Values.readinessProbe | indent 12 }}
+          ports:
+            - containerPort: {{ .Values.service.targetPort }}
+          env:
+            - name: PYTHONPATH
+              value: "/app"
+            - name: NEW_RELIC_LICENSE_KEY
+              value: {{ .Values.newrelic.licenseKey | quote }}
+            - name: NEW_RELIC_APP_NAME
+              value: {{ .Values.newrelic.appName | quote }}
+            - name: NEW_RELIC_CONFIG_FILE
+              value: /app/newrelic.ini
+          resources:
+{{ toYaml .Values.resources | indent 12 }}
